@@ -76,14 +76,14 @@ public class MysqlPositionStore {
 
 	public long heartbeat() throws Exception {
 		long heartbeatValue = System.currentTimeMillis();
-		heartbeat(heartbeatValue);
-		return heartbeatValue;
+		return heartbeat(heartbeatValue);
 	}
 
-	public synchronized void heartbeat(long heartbeatValue) throws SQLException, DuplicateProcessException {
+	public synchronized long heartbeat(long heartbeatValue) throws SQLException, DuplicateProcessException {
 		connectionPool.withSQLRetry(1, (c) ->  {
 			heartbeat(c, heartbeatValue);
 		});
+		return getLastHeartbeatSent();
 	}
 
 	/*
@@ -94,7 +94,7 @@ public class MysqlPositionStore {
 
 	private Long lastHeartbeat = null;
 
-	private Long insertHeartbeat(Connection c, Long thisHeartbeat) throws SQLException, DuplicateProcessException {
+	private void insertHeartbeat(Connection c, Long thisHeartbeat) throws SQLException, DuplicateProcessException {
 		String heartbeatInsert = "insert into `heartbeats` set `heartbeat` = ?, `server_id` = ?, `client_id` = ?";
 
 		PreparedStatement s = c.prepareStatement(heartbeatInsert);
@@ -104,7 +104,6 @@ public class MysqlPositionStore {
 
 		try {
 			s.execute();
-			return thisHeartbeat;
 		} catch ( SQLIntegrityConstraintViolationException e ) {
 			throw new DuplicateProcessException("Found heartbeat row for client,position while trying to insert.  Is another maxwell running?");
 		}
@@ -124,6 +123,11 @@ public class MysqlPositionStore {
 			} else {
 				lastHeartbeat = rs.getLong("heartbeat");
 			}
+		}
+
+		if ( thisHeartbeat <= lastHeartbeat ) {
+			// Ensure that heartbeats increase monotonically, even if the system clock doesn't
+			thisHeartbeat = lastHeartbeat + 1;
 		}
 
 		String heartbeatUpdate = "update `heartbeats` set `heartbeat` = ? where `server_id` = ? and `client_id` = ? and `heartbeat` = ?";
