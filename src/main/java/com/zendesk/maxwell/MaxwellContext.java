@@ -147,11 +147,10 @@ public class MaxwellContext {
 	}
 
 	private void sendFinalHeartbeat() {
-		long heartbeat = System.currentTimeMillis();
-		LOGGER.info("Sending final heartbeat: " + heartbeat);
 		try {
+			long heartbeat = this.positionStore.heartbeat(System.currentTimeMillis());
+			LOGGER.info("Sending final heartbeat: " + heartbeat);
 			this.replicator.stopAtHeartbeat(heartbeat);
-			this.positionStore.heartbeat(heartbeat);
 			long deadline = heartbeat + 5000L;
 			while (positionStoreThread.getPosition().getLastHeartbeatRead() < heartbeat) {
 				if (System.currentTimeMillis() > deadline) {
